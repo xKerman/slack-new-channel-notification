@@ -1,0 +1,47 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Parameters:
+  Env:
+    Type: String
+    AllowedValues:
+      - stg
+      - prod
+Resources:
+  SlackNewChannelNotificationLambda:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub ${Env}-slack-new-channel-notification
+      Runtime: provided
+      Handler: bootstrap
+      CodeUri: target/rust.zip
+      Role: !GetAtt SlackNewChannelNotificationIamRole.Arn
+      Timeout: 10
+      MemorySize: 256
+      Environment:
+        Variables:
+          RUST_BACKTRACE: 1
+          ENV: !Sub '${Env}'
+      Events:
+        SlackEventsApi:
+          Type: Api
+          Properties:
+            Path: /slack
+            Method: Post
+  SlackNewChannelNotificationIamRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          Effect: Allow
+          Principal:
+            Service: lambda.amazonaws.com
+          Action:
+            - sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+  SlackNewChannelNotificationLog:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${SlackNewChannelNotificationLambda}
+      RetentionInDays: 30
