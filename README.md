@@ -16,7 +16,7 @@ AWS Environment:
     * Name: `/slack-new-channel-notification/slack-webhook-url`
     * Type: `SecureString`
 * Put [Slack Signing Secret](https://api.slack.com/docs/verifying-requests-from-slack) into [AWS System Manager Parameter Store](https://docs.aws.amazon.com/systems-manager/latest/userguide/systems-manager-paramstore.html)
-    * Name: `/slack-new-channel-notification/signing-secrets`
+    * Name: `/slack-new-channel-notification/signing-secret`
     * Type: `SecureString`
 
 ### build
