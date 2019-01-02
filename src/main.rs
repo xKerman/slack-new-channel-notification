@@ -135,7 +135,6 @@ fn verify_request(req: &ApiGatewayInput, signing_secret: &str) -> Result<(), Box
         None => return Err(VerificationError::TimestampNotFound.into()),
         Some(t) => t.parse::<i64>()?,
     };
-    log::info!("timestamp = {}", timestamp);
 
     let timestamp = Utc.timestamp(timestamp, 0);
     let now = Utc::now();
@@ -143,7 +142,6 @@ fn verify_request(req: &ApiGatewayInput, signing_secret: &str) -> Result<(), Box
     if duration < Duration::minutes(0) || duration > Duration::minutes(5) {
         return Err(VerificationError::InvalidTimestamp.into());
     }
-    log::info!("timestamp check succeeded!");
 
     let base = format!("v0:{}:{}", timestamp.timestamp(), &req.body);
     let mut mac = HmacSha256::new_varkey(signing_secret.as_bytes()).expect("invalid key length");
@@ -153,28 +151,20 @@ fn verify_request(req: &ApiGatewayInput, signing_secret: &str) -> Result<(), Box
         None => return Err(VerificationError::SignatureNotFound.into()),
         Some(sig) => sig,
     };
-    log::info!("signature = {}", signature);
 
     if &signature[..3] != "v0=" {
         return Err(VerificationError::InvalidVersion.into());
     }
-    log::info!("version check succeded");
 
     let signature = hex::decode(&signature[3..])?;
     mac.verify(&signature).map_err(|e| e.into())
 }
 
 fn handler(event: ApiGatewayInput, c: Context) -> Result<ApiGatewayOutput, HandlerError> {
-    log::info!("start!!");
-    log::info!("request = {:?}", event);
     let ssm_facade = SsmFacade::build(&c)?;
-    log::info!("ssm facade created");
     let signing_secret = ssm_facade.get_parameter("/slack-new-channel-notification/signing-secret")?;
-    log::info!("sining secret from ssm parameter store");
     verify_request(&event, &signing_secret).map_err(|err| c.new_error(err.description()))?;
-    log::info!("verification succeeded!!");
 
-    log::info!("event = {}", &event.body);
     let slack_event = serde_json::from_str(&event.body).map_err(|err| c.new_error(err.description()))?;
     let response = match slack_event {
         SlackEvent::UrlVerification { challenge, .. } => SlackResponse::new(Some(challenge)),
