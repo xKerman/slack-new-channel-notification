@@ -56,15 +56,23 @@ impl Error for VerificationError {
 struct Channel {
     id: String,
     name: String,
-    created: u8,
+    created: u64,
     creator: String,
 }
 
 #[derive(Deserialize, Clone)]
 #[serde(tag = "type")]
 #[serde(rename_all = "snake_case")]
+enum EventContent {
+    ChannelCreated { channel: Channel },
+}
+
+#[derive(Deserialize, Clone)]
+#[serde(untagged)]
+#[serde(rename_all = "snake_case")]
 enum SlackEvent {
     UrlVerification { challenge: String, token: String },
+    NormalEvent { event: EventContent, token: String },
 }
 
 #[derive(Serialize, Clone)]
@@ -165,10 +173,18 @@ fn handler(event: ApiGatewayInput, c: Context) -> Result<ApiGatewayOutput, Handl
     let signing_secret = ssm_facade.get_parameter("/slack-new-channel-notification/signing-secret")?;
     verify_request(&event, &signing_secret).map_err(|err| c.new_error(err.description()))?;
 
+    log::info!("event = {}", event.body);
     let slack_event = serde_json::from_str(&event.body).map_err(|err| c.new_error(err.description()))?;
     let response = match slack_event {
         SlackEvent::UrlVerification { challenge, .. } => SlackResponse::new(Some(challenge)),
-        _ => SlackResponse::new(None),
+        SlackEvent::NormalEvent { event, .. } => {
+            match event {
+                EventContent::ChannelCreated { channel } => {
+                    log::info!("id: {}, name: {}", channel.id, channel.name);
+                }
+            }
+            SlackResponse::new(None)
+        },
     };
 
     Ok(ApiGatewayOutput::new(200, HashMap::new(), serde_json::to_string(&response).unwrap()))
