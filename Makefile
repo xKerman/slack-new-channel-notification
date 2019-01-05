@@ -11,7 +11,7 @@ help: ## show help
 		awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-30s\033[0m %s\n", $$1, $$2}'
 
 
-target/x86_64-unknown-linux-musl/release/bootstrap: src/main.rs Cargo.toml
+target/x86_64-unknown-linux-musl/release/bootstrap: slack-to-sns/src/main.rs slack-to-sns/Cargo.toml
 	docker run --rm -i -v $(PWD):/home/rust/src ekidd/rust-musl-builder cargo build --release --target x86_64-unknown-linux-musl
 
 target/rust.zip: target/x86_64-unknown-linux-musl/release/bootstrap
