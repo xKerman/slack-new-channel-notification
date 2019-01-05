@@ -1,5 +1,5 @@
 [package]
-name = "slack-new-channels"
+name = "slack-to-sns"
 version = "0.1.0"
 authors = ["xKerman <xKhorasan@gmail.com>"]
 edition = "2018"
@@ -13,6 +13,7 @@ serde_derive = "^1"
 log = "^0.4"
 simple_logger = "^1"
 rusoto_core = "0.36.0"
+rusoto_sns = "0.36.0"
 rusoto_ssm = "0.36.0"
 openssl-probe = "0.1.2"
 hmac = "^0.7"

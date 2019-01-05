@@ -7,27 +7,29 @@ Parameters:
       - stg
       - prod
 Resources:
-  SlackNewChannelNotificationLambda:
+  # slack event -> api gateway -> lambda -> sns -> sqs -> lambda -> slack
+  SlackEventsToSnsLambda:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: !Sub ${Env}-slack-new-channel-notification
       Runtime: provided
       Handler: bootstrap
       CodeUri: target/rust.zip
-      Role: !GetAtt SlackNewChannelNotificationIamRole.Arn
+      Role: !GetAtt SlackEventsToSnsIamRole.Arn
       Timeout: 10
       MemorySize: 256
       Environment:
         Variables:
           RUST_BACKTRACE: 1
           ENV: !Sub '${Env}'
+          AWS_SNS_TOPIC_ARN: !Ref SnsTopic
       Events:
         SlackEventsApi:
           Type: Api
           Properties:
             Path: /slack
             Method: Post
-  SlackNewChannelNotificationIamRole:
+  SlackEventsToSnsIamRole:
     Type: AWS::IAM::Role
     Properties:
       AssumeRolePolicyDocument:
@@ -41,7 +43,7 @@ Resources:
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
       Policies:
-        - PolicyName: SlackNewChannelNotificationSsmParameterStoreAccess
+        - PolicyName: SlackEventsToSnsSsmParameterStoreAccess
           PolicyDocument:
             Version: 2012-10-17
             Statement:
@@ -49,8 +51,43 @@ Resources:
               Action:
                 - 'ssm:GetParameter*'
               Resource: !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/slack-new-channel-notification/*'
-  SlackNewChannelNotificationLog:
+        - PolicyName: SlackEventstoSnsPublishAccess
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              Effect: Allow
+              Action:
+                - sns:Publish
+              Resource: !Ref SnsTopic
+  SlackEventsToSnsLog:
     Type: AWS::Logs::LogGroup
     Properties:
-      LogGroupName: !Sub /aws/lambda/${SlackNewChannelNotificationLambda}
+      LogGroupName: !Sub /aws/lambda/${SlackEventsToSnsLambda}
       RetentionInDays: 30
+
+  SnsTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      Subscription:
+        - Endpoint: !GetAtt SlackEventQueue.Arn
+          Protocol: sqs
+
+  SlackEventQueue:
+    Type: AWS::SQS::Queue
+  SlackEventQueuePolicy:
+    Type: AWS::SQS::QueuePolicy
+    Properties:
+      PolicyDocument:
+        Version: 2012-10-17
+        Id: SlackEventQueuePolicy
+        Statement:
+          Effect: Allow
+          Principal: '*'
+          Action:
+            - sqs:SendMessage
+          Resource: '*'
+          Condition:
+            ArnEquals:
+              aws:SourceArn: !Ref SnsTopic
+      Queues:
+        - !Ref SlackEventQueue

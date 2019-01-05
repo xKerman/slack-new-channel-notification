@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::default::Default;
 use std::env;
 use std::error::Error;
 use std::fmt;
@@ -8,6 +9,7 @@ use chrono::{Utc, Duration, TimeZone};
 use hmac::Mac;
 use lambda_runtime::{error::HandlerError, Context, lambda};
 use rusoto_core::Region;
+use rusoto_sns::{Sns, SnsClient, PublishInput};
 use rusoto_ssm::{GetParameterRequest, Ssm, SsmClient};
 use serde_derive::{Deserialize, Serialize};
 
@@ -51,7 +53,7 @@ impl Error for VerificationError {
     }
 }
 
-#[derive(Deserialize, Clone)]
+#[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 struct Channel {
     id: String,
@@ -137,6 +139,45 @@ impl<'a> SsmFacade<'a> {
     }
 }
 
+struct SnsFacade<'a> {
+    context: &'a Context,
+    client: SnsClient,
+}
+
+impl<'a> SnsFacade<'a> {
+    fn build(context: &'a Context) -> Result<Self, HandlerError> {
+        let region = match env::var("AWS_REGION") {
+            Ok(region) => Region::from_str(region.as_str()).unwrap(),
+            Err(err) => return Err(context.new_error(err.description())),
+        };
+        let client = SnsClient::new(region);
+
+        Ok(SnsFacade {
+            context,
+            client,
+        })
+    }
+
+    fn publish(&self, message: String) -> Result<(), HandlerError> {
+        let topic_arn = env::var("AWS_SNS_TOPIC_ARN").map_err(|err| self.context.new_error(err.description()))?;
+
+        let result = self.client.publish(PublishInput {
+            message,
+            topic_arn: Some(topic_arn),
+            ..Default::default()
+        });
+
+        match result.sync() {
+            Ok(_) => Ok(()),
+            Err(err) => {
+                log::info!("publish error = {:?}", err);
+                Err(self.context.new_error(err.description()))
+            },
+        }
+    }
+}
+
+
 fn verify_request(req: &ApiGatewayInput, signing_secret: &str) -> Result<(), Box<dyn Error>> {
     // see: https://api.slack.com/docs/verifying-requests-from-slack
     let timestamp = match req.headers.get("X-Slack-Request-Timestamp") {
@@ -181,9 +222,12 @@ fn handler(event: ApiGatewayInput, c: Context) -> Result<ApiGatewayOutput, Handl
             match event {
                 EventContent::ChannelCreated { channel } => {
                     log::info!("id: {}, name: {}", channel.id, channel.name);
+                    let sns_facade = SnsFacade::build(&c)?;
+                    let message = serde_json::to_string(&channel).map_err(|err| c.new_error(err.description()))?;
+                    sns_facade.publish(message)?;
+                    SlackResponse::new(None)
                 }
             }
-            SlackResponse::new(None)
         },
     };
 
