@@ -14,7 +14,7 @@ Resources:
       FunctionName: !Sub ${Env}-slack-new-channel-notification
       Runtime: provided
       Handler: bootstrap
-      CodeUri: target/rust.zip
+      CodeUri: target/slack-to-sns.zip
       Role: !GetAtt SlackEventsToSnsIamRole.Arn
       Timeout: 10
       MemorySize: 256

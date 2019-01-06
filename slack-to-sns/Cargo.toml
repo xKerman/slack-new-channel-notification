@@ -23,5 +23,5 @@ chrono = "^0.4"
 hex = "^0.3"
 
 [[bin]]
-name = "bootstrap"
+name = "slack-to-sns"
 path = "src/main.rs"

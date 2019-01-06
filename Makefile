@@ -11,21 +11,22 @@ help: ## show help
 		awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-30s\033[0m %s\n", $$1, $$2}'
 
 
-target/x86_64-unknown-linux-musl/release/bootstrap: slack-to-sns/src/main.rs slack-to-sns/Cargo.toml
+target/x86_64-unknown-linux-musl/release/slack-to-sns: slack-to-sns/src/main.rs slack-to-sns/Cargo.toml
 	docker run --rm -i -v $(PWD):/home/rust/src ekidd/rust-musl-builder cargo build --release --target x86_64-unknown-linux-musl
 
-target/rust.zip: target/x86_64-unknown-linux-musl/release/bootstrap
+target/slack-to-sns.zip: target/x86_64-unknown-linux-musl/release/slack-to-sns
 	zip -j $@ $^
+	ziptool $@ rename 0 bootstrap
 
 .PHONY: build
-build: target/rust.zip ## build zip file for AWS Lambda code
+build: target/slack-to-sns.zip ## build zip file for AWS Lambda code
 
 .PHONY: clean
 clean: ## clean up build files
 	cargo clean
 	rm -f .output.yml
 
-.output.yml: template.yml target/rust.zip
+.output.yml: template.yml target/slack-to-sns.zip
 	aws cloudformation package \
 		--region $(AWS_REGION) \
 		--template-file template.yml \
@@ -37,7 +38,7 @@ clean: ## clean up build files
 package: .output.yml ## create AWS Lambda package and upload it to S3
 
 .PHONY: deploy
-deploy: .output.yml target/rust.zip ## deploy code to AWS Lambda
+deploy: .output.yml target/slack-to-sns.zip ## deploy code to AWS Lambda
 	aws cloudformation deploy \
 		--region $(AWS_REGION) \
 		--template-file .output.yml \
