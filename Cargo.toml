@@ -1,4 +1,5 @@
 [workspace]
 members = [
     "slack-to-sns",
+    "sqs-to-slack",
 ]

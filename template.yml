@@ -91,3 +91,61 @@ Resources:
               aws:SourceArn: !Ref SnsTopic
       Queues:
         - !Ref SlackEventQueue
+
+  SqsToSlackLambda:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub ${Env}-sqs-to-slack
+      Runtime: provided
+      Handler: bootstrap
+      CodeUri: target/sqs-to-slack.zip
+      Role: !GetAtt SqsToSlackIamRole.Arn
+      Timeout: 10
+      MemorySize: 256
+      Environment:
+        Variables:
+          RUST_BACKTRACE: 1
+          ENV: !Sub '${Env}'
+      Events:
+        SqsEvent:
+          Type: SQS
+          Properties:
+            Queue: !GetAtt SlackEventQueue.Arn
+            BatchSize: 10
+  SqsToSlackIamRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          Effect: Allow
+          Principal:
+            Service: lambda.amazonaws.com
+          Action:
+            - sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: SqsToSlackSsmParameterStoreAccess
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              Effect: Allow
+              Action:
+                - 'ssm:GetParameter*'
+              Resource: !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/slack-new-channel-notification/*'
+        - PolicyName: SqsToSlackSqsAccess
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              Effect: Allow
+              Action:
+                - sqs:ReceiveMessage
+                - sqs:DeleteMessage
+                - sqs:GetQueueAttributes
+              Resource: !GetAtt SlackEventQueue.Arn
+  SqsToSlackLog:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${SqsToSlackLambda}
+      RetentionInDays: 30
