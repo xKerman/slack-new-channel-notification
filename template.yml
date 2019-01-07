@@ -11,7 +11,7 @@ Resources:
   SlackEventsToSnsLambda:
     Type: AWS::Serverless::Function
     Properties:
-      FunctionName: !Sub ${Env}-slack-new-channel-notification
+      FunctionName: !Sub ${Env}-slack-to-sns
       Runtime: provided
       Handler: bootstrap
       CodeUri: target/slack-to-sns.zip
