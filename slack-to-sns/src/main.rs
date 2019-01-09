@@ -1,17 +1,14 @@
 use std::collections::HashMap;
-use std::default::Default;
-use std::env;
 use std::error::Error;
 use std::fmt;
-use std::str::FromStr;
 
 use chrono::{Utc, Duration, TimeZone};
 use hmac::Mac;
 use lambda_runtime::{error::HandlerError, Context, lambda};
-use rusoto_core::Region;
-use rusoto_sns::{Sns, SnsClient, PublishInput};
-use rusoto_ssm::{GetParameterRequest, Ssm, SsmClient};
 use serde_derive::{Deserialize, Serialize};
+
+use awsutil::{SsmFacade, SnsFacade};
+
 
 type HmacSha256 = hmac::Hmac<sha2::Sha256>;
 
@@ -109,74 +106,6 @@ impl ApiGatewayOutput {
         ApiGatewayOutput { status_code, headers, body }
     }
 }
-
-struct SsmFacade<'a> {
-    context: &'a Context,
-    client: SsmClient,
-}
-
-impl<'a> SsmFacade<'a> {
-    fn build(context: &'a Context) -> Result<Self, HandlerError> {
-        let region = match env::var("AWS_REGION") {
-            Ok(region) => Region::from_str(region.as_str()).unwrap(),
-            Err(err) => return Err(context.new_error(err.description())),
-        };
-        let client = SsmClient::new(region);
-
-        Ok(SsmFacade { context, client })
-    }
-
-    fn get_parameter(&self, name: &str) -> Result<String, HandlerError> {
-        let result = self.client.get_parameter(GetParameterRequest {
-            name: name.to_string(),
-            with_decryption: Some(true),
-        });
-
-        match result.sync() {
-            Err(err) => Err(self.context.new_error(err.description())),
-            Ok(res) => Ok(res.parameter.map(|p| p.value.unwrap()).unwrap()),
-        }
-    }
-}
-
-struct SnsFacade<'a> {
-    context: &'a Context,
-    client: SnsClient,
-}
-
-impl<'a> SnsFacade<'a> {
-    fn build(context: &'a Context) -> Result<Self, HandlerError> {
-        let region = match env::var("AWS_REGION") {
-            Ok(region) => Region::from_str(region.as_str()).unwrap(),
-            Err(err) => return Err(context.new_error(err.description())),
-        };
-        let client = SnsClient::new(region);
-
-        Ok(SnsFacade {
-            context,
-            client,
-        })
-    }
-
-    fn publish(&self, message: String) -> Result<(), HandlerError> {
-        let topic_arn = env::var("AWS_SNS_TOPIC_ARN").map_err(|err| self.context.new_error(err.description()))?;
-
-        let result = self.client.publish(PublishInput {
-            message,
-            topic_arn: Some(topic_arn),
-            ..Default::default()
-        });
-
-        match result.sync() {
-            Ok(_) => Ok(()),
-            Err(err) => {
-                log::info!("publish error = {:?}", err);
-                Err(self.context.new_error(err.description()))
-            },
-        }
-    }
-}
-
 
 fn verify_request(req: &ApiGatewayInput, signing_secret: &str) -> Result<(), Box<dyn Error>> {
     // see: https://api.slack.com/docs/verifying-requests-from-slack
