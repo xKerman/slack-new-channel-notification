@@ -17,6 +17,7 @@ chrono = "^0.4"
 slack-hook = "0.8"
 
 awsutil = { path = "../awsutil" }
+slackutil = { path = "../slackutil" }
 
 [[bin]]
 name = "sqs-to-slack"

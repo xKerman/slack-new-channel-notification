@@ -8,7 +8,7 @@ use lambda_runtime::{error::HandlerError, Context, lambda};
 use serde_derive::{Deserialize, Serialize};
 
 use awsutil::{SsmFacade, SnsFacade};
-
+use slackutil::Channel;
 
 type HmacSha256 = hmac::Hmac<sha2::Sha256>;
 
@@ -48,15 +48,6 @@ impl Error for VerificationError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         None
     }
-}
-
-#[derive(Clone, Deserialize, Serialize)]
-#[serde(rename_all = "snake_case")]
-struct Channel {
-    id: String,
-    name: String,
-    created: i64,
-    creator: String,
 }
 
 #[derive(Deserialize, Clone)]

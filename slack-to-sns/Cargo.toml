@@ -20,6 +20,7 @@ chrono = "^0.4"
 hex = "^0.3"
 
 awsutil = { path = "../awsutil" }
+slackutil = { path = "../slackutil" }
 
 [[bin]]
 name = "slack-to-sns"

@@ -5,6 +5,7 @@ use lambda_runtime::{error::HandlerError, Context, lambda};
 use serde_derive::{Deserialize, Serialize};
 
 use awsutil::SsmFacade;
+use slackutil::Channel;
 
 // see: https://github.com/serde-rs/serde/issues/994#issuecomment-316895860
 mod json_string {
@@ -19,23 +20,14 @@ mod json_string {
     }
 }
 
-#[derive(Clone, Debug, Deserialize)]
-#[serde(rename_all = "snake_case")]
-struct Channel {
-    id: String,
-    name: String,
-    created: i64,
-    creator: String,
-}
-
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Deserialize)]
 struct SqsMessageBody {
     #[serde(rename = "Message")]
     #[serde(with = "json_string")]
     message: Channel,
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Deserialize)]
 struct SqsMessage {
     #[serde(with = "json_string")]
     body: Option<SqsMessageBody>,
@@ -58,7 +50,6 @@ fn handler(event: SqsEvent, c: Context) -> Result<Output, HandlerError> {
         match &ev.body {
             None => continue,
             Some(body) => {
-                log::info!("channel = {:?}", body.message);
                 let channel = &body.message;
                 let created = chrono::Utc.timestamp(channel.created, 0).with_timezone(&chrono::FixedOffset::east(9 * 3600));
                 let texts = vec![

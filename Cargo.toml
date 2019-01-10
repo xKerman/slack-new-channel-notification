@@ -1,6 +1,7 @@
 [workspace]
 members = [
     "awsutil",
+    "slackutil",
     "slack-to-sns",
     "sqs-to-slack",
 ]
