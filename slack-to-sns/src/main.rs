@@ -55,7 +55,7 @@ impl Error for VerificationError {
 struct Channel {
     id: String,
     name: String,
-    created: u64,
+    created: i64,
     creator: String,
 }
 

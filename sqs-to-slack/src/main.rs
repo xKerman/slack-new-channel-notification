@@ -1,8 +1,10 @@
 use std::error::Error;
 
+use chrono::TimeZone;
 use lambda_runtime::{error::HandlerError, Context, lambda};
-use rusoto_core::Region;
 use serde_derive::{Deserialize, Serialize};
+
+use awsutil::SsmFacade;
 
 // see: https://github.com/serde-rs/serde/issues/994#issuecomment-316895860
 mod json_string {
@@ -22,7 +24,7 @@ mod json_string {
 struct Channel {
     id: String,
     name: String,
-    created: u64,
+    created: i64,
     creator: String,
 }
 
@@ -50,14 +52,30 @@ struct Output;
 
 fn handler(event: SqsEvent, c: Context) -> Result<Output, HandlerError> {
     log::info!("=== start handler ===");
-    event.records.iter().for_each(|ev| {
+    let ssm_facade = SsmFacade::build(&c)?;
+    let webhook_url = ssm_facade.get_parameter("/slack-new-channel-notification/slack-webhook-url")?;
+    for ev in event.records {
         match &ev.body {
-            None => return,
+            None => continue,
             Some(body) => {
                 log::info!("channel = {:?}", body.message);
+                let channel = &body.message;
+                let created = chrono::Utc.timestamp(channel.created, 0).with_timezone(&chrono::FixedOffset::east(9 * 3600));
+                let texts = vec![
+                    slack_hook::SlackTextContent::Link(slack_hook::SlackLink::new(&format!("#{}", &channel.id), &channel.name)),
+                    slack_hook::SlackTextContent::Text(format!(", at {}", created).into()),
+                ];
+                let payload = slack_hook::PayloadBuilder::new()
+                    .username("Slack New Channel")
+                    .icon_emoji(":new_moon_with_face:")
+                    .text(texts.as_slice())
+                    .build()
+                    .unwrap();
+                let slack = slack_hook::Slack::new(webhook_url.as_str()).unwrap();
+                slack.send(&payload).map_err(|err| c.new_error(err.description()))?;
             }
         };
-    });
+    }
     log::info!("=== end handler ===");
 
     Ok(Output)
