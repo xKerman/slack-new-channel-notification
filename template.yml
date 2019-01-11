@@ -15,7 +15,6 @@ Resources:
       Runtime: provided
       Handler: bootstrap
       CodeUri: target/slack-to-sns.zip
-      Role: !GetAtt SlackEventsToSnsIamRole.Arn
       Timeout: 10
       MemorySize: 256
       Environment:
@@ -29,51 +28,66 @@ Resources:
           Properties:
             Path: /slack
             Method: Post
-  SlackEventsToSnsIamRole:
-    Type: AWS::IAM::Role
-    Properties:
-      AssumeRolePolicyDocument:
-        Version: 2012-10-17
-        Statement:
-          Effect: Allow
-          Principal:
-            Service: lambda.amazonaws.com
-          Action:
-            - sts:AssumeRole
-      ManagedPolicyArns:
-        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
       Policies:
-        - PolicyName: SlackEventsToSnsSsmParameterStoreAccess
-          PolicyDocument:
-            Version: 2012-10-17
-            Statement:
-              Effect: Allow
-              Action:
-                - 'ssm:GetParameter*'
-              Resource: !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/slack-new-channel-notification/*'
-        - PolicyName: SlackEventstoSnsPublishAccess
-          PolicyDocument:
-            Version: 2012-10-17
-            Statement:
-              Effect: Allow
-              Action:
-                - sns:Publish
-              Resource: !Ref SnsTopic
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+        - SNSPublishMessagePolicy:
+            TopicName: !GetAtt SnsTopic.TopicName
+        - Version: 2012-10-17
+          Statement:
+            Effect: Allow
+            Action:
+              - 'ssm:GetParameter*'
+            Resource: !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/slack-new-channel-notification/*'
+        - Version: 2012-10-17
+          Statement:
+            Effect: Allow
+            Action:
+              - 'kms:GenerateDataKey*'
+              - 'kms:Decrypt'
+            Resource: !GetAtt SnsToSqsEncyptKey.Arn
   SlackEventsToSnsLog:
     Type: AWS::Logs::LogGroup
     Properties:
       LogGroupName: !Sub /aws/lambda/${SlackEventsToSnsLambda}
       RetentionInDays: 30
 
+  SnsToSqsEncyptKey:
+    Type: AWS::KMS::Key
+    Properties:
+      Description: Encrypt data in SQS queue
+      Enabled: true
+      KeyPolicy:
+        # see: https://docs.aws.amazon.com/sns/latest/dg/sns-enable-encryption-sqs-queue-subscriptions.html
+        Version: 2012-10-17
+        Statement:
+          - Sid: Enable IAM User Permissions
+            Effect: Allow
+            Principal:
+              AWS: !Sub 'arn:aws:iam::${AWS::AccountId}:root'
+            Action:
+              - 'kms:*'
+            Resource: '*'
+          - Sid: Allow SNS to use the key
+            Effect: Allow
+            Principal:
+              Service: sns.amazonaws.com
+            Action:
+              - 'kms:GenerateDataKey*'
+              - 'kms:Decrypt'
+            Resource: '*'
+
   SnsTopic:
     Type: AWS::SNS::Topic
     Properties:
+      KmsMasterKeyId: !Ref SnsToSqsEncyptKey
       Subscription:
         - Endpoint: !GetAtt SlackEventQueue.Arn
           Protocol: sqs
 
   SlackEventQueue:
     Type: AWS::SQS::Queue
+    Properties:
+      KmsMasterKeyId: !Ref SnsToSqsEncyptKey
   SlackEventQueuePolicy:
     Type: AWS::SQS::QueuePolicy
     Properties:
@@ -99,7 +113,6 @@ Resources:
       Runtime: provided
       Handler: bootstrap
       CodeUri: target/sqs-to-slack.zip
-      Role: !GetAtt SqsToSlackIamRole.Arn
       Timeout: 10
       MemorySize: 256
       Environment:
@@ -112,38 +125,18 @@ Resources:
           Properties:
             Queue: !GetAtt SlackEventQueue.Arn
             BatchSize: 10
-  SqsToSlackIamRole:
-    Type: AWS::IAM::Role
-    Properties:
-      AssumeRolePolicyDocument:
-        Version: 2012-10-17
-        Statement:
-          Effect: Allow
-          Principal:
-            Service: lambda.amazonaws.com
-          Action:
-            - sts:AssumeRole
-      ManagedPolicyArns:
-        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
       Policies:
-        - PolicyName: SqsToSlackSsmParameterStoreAccess
-          PolicyDocument:
-            Version: 2012-10-17
-            Statement:
-              Effect: Allow
-              Action:
-                - 'ssm:GetParameter*'
-              Resource: !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/slack-new-channel-notification/*'
-        - PolicyName: SqsToSlackSqsAccess
-          PolicyDocument:
-            Version: 2012-10-17
-            Statement:
-              Effect: Allow
-              Action:
-                - sqs:ReceiveMessage
-                - sqs:DeleteMessage
-                - sqs:GetQueueAttributes
-              Resource: !GetAtt SlackEventQueue.Arn
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+        - SQSPollerPolicy:
+            QueueName: !GetAtt SlackEventQueue.QueueName
+        - KMSDecryptPolicy:
+            KeyId: !Ref SnsToSqsEncyptKey
+        - Version: 2012-10-17
+          Statement:
+            Effect: Allow
+            Action:
+              - 'ssm:GetParameter*'
+            Resource: !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/slack-new-channel-notification/*'
   SqsToSlackLog:
     Type: AWS::Logs::LogGroup
     Properties:
